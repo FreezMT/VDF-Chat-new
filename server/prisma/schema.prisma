@@ -1,0 +1,125 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  dancer
+  parent
+  trainer
+  admin
+}
+
+enum ChatType {
+  private
+  group
+}
+
+model User {
+  id            String    @id @default(uuid())
+  visibleId     String    @unique
+  firstName     String
+  lastName      String
+  email         String    @unique
+  passwordHash  String
+  role          Role      @default(dancer)
+  birthDate     DateTime?
+  avatarUrl     String?
+  teamId        String?
+  team          Team?     @relation(fields: [teamId], references: [id])
+  createdAt     DateTime  @default(now())
+
+  sentMessages      Message[]
+  chatMembers       ChatMember[]
+  friends           Friendship[]     @relation("userFriends")
+  friendOf          Friendship[]     @relation("friendOf")
+  posts             Post[]
+  pushSubscriptions PushSubscription[]
+}
+
+model Team {
+  id    String @id @default(uuid())
+  name  String @unique
+  users User[]
+}
+
+model Friendship {
+  id        String   @id @default(uuid())
+  userId    String
+  friendId  String
+  user      User     @relation("userFriends", fields: [userId], references: [id])
+  friend    User     @relation("friendOf", fields: [friendId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([userId, friendId])
+}
+
+model Chat {
+  id        String     @id @default(uuid())
+  type      ChatType
+  name      String?
+  avatarUrl String?
+  createdBy String?
+  createdAt DateTime   @default(now())
+  members   ChatMember[]
+  messages  Message[]
+}
+
+model ChatMember {
+  id       String   @id @default(uuid())
+  chatId   String
+  userId   String
+  chat     Chat     @relation(fields: [chatId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
+  joinedAt DateTime @default(now())
+  muted    Boolean  @default(false)
+
+  @@unique([chatId, userId])
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  chatId    String
+  senderId  String
+  content   String?
+  mediaUrl  String?
+  mediaType String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  readBy    ReadReceipt[]
+  chat      Chat     @relation(fields: [chatId], references: [id])
+  sender    User     @relation(fields: [senderId], references: [id])
+}
+
+model ReadReceipt {
+  id        String   @id @default(uuid())
+  messageId String
+  userId    String
+  readAt    DateTime @default(now())
+  message   Message  @relation(fields: [messageId], references: [id])
+
+  @@unique([messageId, userId])
+}
+
+model Post {
+  id        String   @id @default(uuid())
+  authorId  String
+  content   String
+  mediaUrl  String?
+  mediaType String?
+  createdAt DateTime @default(now())
+  author    User     @relation(fields: [authorId], references: [id])
+}
+
+model PushSubscription {
+  id       String @id @default(uuid())
+  userId   String
+  endpoint String @unique
+  p256dh   String
+  auth     String
+  user     User   @relation(fields: [userId], references: [id])
+}
