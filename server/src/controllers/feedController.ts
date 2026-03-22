@@ -1,75 +1,79 @@
 import type { Response } from 'express'
 import { z } from 'zod'
 import type { AuthedRequest } from '../middleware/auth.js'
-import { HttpError } from '../middleware/errors.js'
-import { prisma } from '../utils/prisma.js'
-import { toUserPublic } from '../utils/userPublic.js'
-
-export async function listFeed(req: AuthedRequest, res: Response) {
-  const limit = Math.min(Number(req.query.limit ?? 20), 50)
-  const cursorId = typeof req.query.cursor === 'string' ? req.query.cursor : undefined
-  const cursorPost = cursorId
-    ? await prisma.post.findUnique({ where: { id: cursorId } })
-    : null
-  if (cursorId && !cursorPost) throw new HttpError(400, 'Invalid cursor')
-  const posts = await prisma.post.findMany({
-    where: cursorPost ? { createdAt: { lt: cursorPost.createdAt } } : undefined,
-    take: limit + 1,
-    orderBy: { createdAt: 'desc' },
-    include: { author: { include: { team: true } } },
-  })
-  const hasMore = posts.length > limit
-  const slice = hasMore ? posts.slice(0, limit) : posts
-  const nextCursor = hasMore && slice.length > 0 ? slice[slice.length - 1].id : null
-  return res.json({
-    posts: slice.map((p) => ({
-      id: p.id,
-      authorId: p.authorId,
-      content: p.content,
-      mediaUrl: p.mediaUrl,
-      mediaType: p.mediaType,
-      createdAt: p.createdAt,
-      author: toUserPublic(p.author),
-    })),
-    nextCursor,
-  })
-}
+import { prisma } from '../prisma.js'
+import { AppError } from '../middleware/errors.js'
+import { paramString } from '../utils/params.js'
 
 const createSchema = z.object({
   content: z.string().min(1),
   mediaUrl: z.string().url().optional(),
-  mediaType: z.string().optional(),
+  mediaType: z.enum(['image', 'video', 'file']).optional(),
 })
 
-export async function createPost(req: AuthedRequest, res: Response) {
+export async function listFeed(req: AuthedRequest, res: Response): Promise<void> {
+  const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20))
+  const cursor = typeof req.query.cursor === 'string' ? req.query.cursor : undefined
+
+  const where: { createdAt?: { lt: Date } } = {}
+  if (cursor) {
+    const p = await prisma.post.findUnique({ where: { id: cursor } })
+    if (p) where.createdAt = { lt: p.createdAt }
+  }
+
+  const posts = await prisma.post.findMany({
+    where: Object.keys(where).length ? where : undefined,
+    orderBy: { createdAt: 'desc' },
+    take: limit,
+    include: {
+      author: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          avatarUrl: true,
+          role: true,
+        },
+      },
+    },
+  })
+
+  const nextCursor = posts.length === limit ? posts[posts.length - 1]?.id ?? null : null
+  res.json({ posts, nextCursor })
+}
+
+export async function createPost(req: AuthedRequest, res: Response): Promise<void> {
   const body = createSchema.parse(req.body)
   const post = await prisma.post.create({
     data: {
-      authorId: req.userId!,
+      authorId: req.userId,
       content: body.content,
       mediaUrl: body.mediaUrl,
       mediaType: body.mediaType,
     },
-    include: { author: { include: { team: true } } },
-  })
-  return res.json({
-    post: {
-      id: post.id,
-      authorId: post.authorId,
-      content: post.content,
-      mediaUrl: post.mediaUrl,
-      mediaType: post.mediaType,
-      createdAt: post.createdAt,
-      author: toUserPublic(post.author),
+    include: {
+      author: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          avatarUrl: true,
+          role: true,
+        },
+      },
     },
   })
+  res.status(201).json({ post })
 }
 
-export async function deletePost(req: AuthedRequest, res: Response) {
-  const postId = String(req.params.postId)
+export async function deletePost(req: AuthedRequest, res: Response): Promise<void> {
+  const postId = paramString(req.params, 'postId')
+  if (!postId) throw new AppError(400, 'Invalid post')
   const post = await prisma.post.findUnique({ where: { id: postId } })
-  if (!post) throw new HttpError(404, 'Not found')
-  if (post.authorId !== req.userId && req.role !== 'admin') throw new HttpError(403, 'Forbidden')
+  if (!post) throw new AppError(404, 'Post not found')
+  if (post.authorId !== req.userId && req.role !== 'admin') {
+    throw new AppError(403, 'Forbidden')
+  }
   await prisma.post.delete({ where: { id: postId } })
-  return res.json({ ok: true })
+  res.json({ ok: true })
 }

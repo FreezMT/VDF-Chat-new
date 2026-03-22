@@ -1,5 +1,5 @@
 import { io, type Socket } from 'socket.io-client'
-import { getAccessToken } from '@/api/client'
+import { useAuthStore } from '@/stores/authStore'
 
 let socket: Socket | null = null
 
@@ -7,28 +7,26 @@ export function getSocket(): Socket | null {
   return socket
 }
 
-export function connectSocket(): Socket {
+export function connectSocket(): Socket | null {
+  const token = useAuthStore.getState().accessToken
+  if (!token) return null
   if (socket?.connected) return socket
 
-  const token = getAccessToken()
-  const url = typeof window !== 'undefined' ? window.location.origin : ''
-
-  socket = io(url, {
-    path: '/socket.io',
-    auth: token ? { token } : {},
+  const url = import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_API_URL || ''
+  socket = io(url || undefined, {
+    auth: { token },
     transports: ['websocket', 'polling'],
-    autoConnect: true,
+    withCredentials: true,
   })
-
   return socket
 }
 
-export function disconnectSocket() {
+export function disconnectSocket(): void {
   socket?.disconnect()
   socket = null
 }
 
-export function reconnectSocket() {
+export function reconnectSocket(): Socket | null {
   disconnectSocket()
-  connectSocket()
+  return connectSocket()
 }

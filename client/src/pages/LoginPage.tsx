@@ -1,51 +1,51 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { motion } from 'framer-motion'
-import { login } from '@/api/auth'
+import { http } from '@/api/http'
+import { useAuthStore } from '@/stores/authStore'
+import type { User } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { useAuthStore } from '@/stores/authStore'
-import { reconnectSocket } from '@/services/socket'
 
 export function LoginPage() {
-  const navigate = useNavigate()
-  const setUser = useAuthStore((s) => s.setUser)
+  const nav = useNavigate()
+  const setAuth = useAuthStore((s) => s.setAuth)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setError(null)
+    setErr(null)
     setLoading(true)
     try {
-      const data = await login(email, password)
-      setUser(data.user)
-      reconnectSocket()
-      navigate('/feed', { replace: true })
+      const { data } = await http.post<{ user: User; accessToken: string }>('/api/auth/login', {
+        email,
+        password,
+      })
+      setAuth(data.accessToken, data.user)
+      nav('/feed', { replace: true })
     } catch {
-      setError('Неверный email или пароль')
+      setErr('Неверный email или пароль')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <motion.div
-      className="flex min-h-dvh flex-col justify-center px-6"
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-    >
-      <div className="mx-auto w-full max-w-sm space-y-8">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold tracking-tight">VDF Chat</h1>
-          <p className="mt-2 text-sm text-muted-foreground">Vinyl Dance Family</p>
+    <div className="flex min-h-[100dvh] flex-col bg-black px-4 py-10 sm:px-8 sm:py-16">
+      <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center">
+        <div className="mb-10 text-center">
+          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">VDF Chat</h1>
+          <p className="mt-2 text-[15px] text-muted">Вход в аккаунт</p>
         </div>
-        <form onSubmit={onSubmit} className="space-y-4">
+
+        <form onSubmit={onSubmit} className="space-y-5">
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email" className="text-[13px] text-muted">
+              Email
+            </Label>
             <Input
               id="email"
               type="email"
@@ -56,7 +56,9 @@ export function LoginPage() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password">Пароль</Label>
+            <Label htmlFor="password" className="text-[13px] text-muted">
+              Пароль
+            </Label>
             <Input
               id="password"
               type="password"
@@ -66,18 +68,18 @@ export function LoginPage() {
               required
             />
           </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? 'Вход…' : 'Войти'}
+          {err ? <p className="text-center text-sm text-red-400/90">{err}</p> : null}
+          <Button type="submit" className="mt-2 w-full" size="lg" disabled={loading}>
+            {loading ? '…' : 'Войти'}
           </Button>
+          <p className="pt-4 text-center text-[15px] text-muted">
+            Нет аккаунта?{' '}
+            <Link className="font-medium text-accent hover:underline" to="/register">
+              Регистрация
+            </Link>
+          </p>
         </form>
-        <p className="text-center text-sm text-muted-foreground">
-          Нет аккаунта?{' '}
-          <Link to="/register" className="text-primary hover:underline">
-            Регистрация
-          </Link>
-        </p>
       </div>
-    </motion.div>
+    </div>
   )
 }

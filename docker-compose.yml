@@ -1,66 +1,51 @@
+# API использует SQLite (файл в volume). PostgreSQL в профиле — для будущей миграции на provider=postgresql.
+
 services:
   postgres:
     image: postgres:16-alpine
+    profiles:
+      - postgres
     environment:
-      POSTGRES_USER: vdf
-      POSTGRES_PASSWORD: vdf
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
       POSTGRES_DB: vdf_chat
+    ports:
+      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-    ports:
-      - '5432:5432'
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U vdf -d vdf_chat']
-      interval: 5s
-      timeout: 5s
-      retries: 5
 
   redis:
     image: redis:7-alpine
     ports:
-      - '6379:6379'
+      - "6379:6379"
 
   api:
     build:
       context: ./server
       dockerfile: Dockerfile
+    env_file:
+      - ./server/.env
     environment:
-      NODE_ENV: production
-      PORT: 4000
-      DATABASE_URL: postgresql://vdf:vdf@postgres:5432/vdf_chat?schema=public
+      DATABASE_URL: "file:/app/prisma/prod.db"
       REDIS_URL: redis://redis:6379
-      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-change-me-access}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change-me-refresh}
       CLIENT_ORIGIN: ${CLIENT_ORIGIN:-http://localhost}
-      PUBLIC_URL: ${PUBLIC_URL:-http://localhost}
-      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
-      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
-      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@example.com}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_started
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost}
+    ports:
+      - "4000:4000"
     volumes:
-      - uploads:/app/uploads
+      - api_sqlite:/app/prisma
+    depends_on:
+      - redis
 
   web:
     build:
       context: ./client
       dockerfile: Dockerfile
-    depends_on:
-      - api
-
-  nginx:
-    image: nginx:1.27-alpine
     ports:
-      - '80:80'
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - "80:80"
     depends_on:
-      - web
       - api
 
 volumes:
   pgdata:
-  uploads:
+  api_sqlite:

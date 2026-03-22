@@ -1,20 +1,22 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import imageCompression from 'browser-image-compression'
-import { logout } from '@/api/auth'
-import { updateMe } from '@/api/users'
-import { uploadFile } from '@/api/upload'
-import { TopBar } from '@/components/layout/TopBar'
+import { useEffect, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { http, bare } from '@/api/http'
+import { useAuthStore } from '@/stores/authStore'
+import type { User } from '@/types'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { useAuthStore } from '@/stores/authStore'
-import { subscribePush } from '@/services/push'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
+import { ChevronRight } from 'lucide-react'
 
-const roleLabels: Record<string, string> = {
+const roles: Record<string, string> = {
   dancer: 'Танцор',
   parent: 'Родитель',
   trainer: 'Тренер',
@@ -22,113 +24,126 @@ const roleLabels: Record<string, string> = {
 }
 
 export function ProfilePage() {
-  const navigate = useNavigate()
-  const user = useAuthStore((s) => s.user)
-  const setUser = useAuthStore((s) => s.setUser)
-  const logoutStore = useAuthStore((s) => s.logout)
+  const nav = useNavigate()
+  const { user, setUser, logout } = useAuthStore()
+  const [profile, setProfile] = useState<User | null>(user)
   const [editOpen, setEditOpen] = useState(false)
-  const [firstName, setFirstName] = useState(user?.firstName ?? '')
-  const [lastName, setLastName] = useState(user?.lastName ?? '')
 
-  async function onSave() {
-    if (!user) return
-    const u = await updateMe({ firstName, lastName })
-    setUser(u)
-    setEditOpen(false)
+  useEffect(() => {
+    void http.get<User>('/api/users/me').then((r) => {
+      setProfile(r.data)
+      setUser(r.data)
+    })
+  }, [setUser])
+
+  async function doLogout() {
+    try {
+      await bare.post('/api/auth/logout')
+    } catch {
+      /* ignore */
+    }
+    logout()
+    nav('/login', { replace: true })
   }
 
-  async function onAvatar(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file || !user) return
-    const compressed = await imageCompression(file, { maxSizeMB: 1, maxWidthOrHeight: 1200 })
-    const { url } = await uploadFile(compressed)
-    const u = await updateMe({ avatarUrl: url })
-    setUser(u)
+  function copyId() {
+    if (!profile?.visibleId) return
+    void navigator.clipboard.writeText(profile.visibleId)
   }
 
-  async function onLogout() {
-    await logout()
-    logoutStore()
-    navigate('/login', { replace: true })
+  if (!profile) {
+    return (
+      <p className="py-20 text-center text-muted">Загрузка…</p>
+    )
   }
 
-  async function onEnablePush() {
-    await subscribePush()
-  }
-
-  if (!user) return null
-
-  const initials = `${user.firstName[0]}${user.lastName[0]}`
+  const initials = `${profile.firstName[0] ?? ''}${profile.lastName[0] ?? ''}`
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <TopBar title="Профиль" />
-      <div className="space-y-4 px-4 py-4">
-        <div className="flex flex-col items-center gap-3">
-          <label className="relative cursor-pointer">
-            <Avatar className="h-24 w-24">
-              {user.avatarUrl && <AvatarImage src={user.avatarUrl} alt="" />}
-              <AvatarFallback className="text-lg">{initials}</AvatarFallback>
-            </Avatar>
-            <input type="file" accept="image/*" className="hidden" onChange={(e) => void onAvatar(e)} />
-          </label>
-          <p className="text-lg font-semibold">
-            {user.firstName} {user.lastName}
-          </p>
-          <button
-            type="button"
-            className="text-sm text-primary"
-            onClick={async () => {
-              await navigator.clipboard.writeText(user.visibleId)
-            }}
-          >
-            ID: {user.visibleId} (копировать)
-          </button>
+    <div className="flex min-h-[calc(100dvh-8rem)] flex-col pb-4">
+      <header className="mb-8 flex items-center justify-between sm:mb-10">
+        <h1 className="text-[22px] font-bold tracking-tight sm:text-2xl">Профиль</h1>
+      </header>
+
+      <div className="flex flex-col items-center text-center">
+        <Avatar className="h-28 w-28 border-2 border-white/10 shadow-xl sm:h-32 sm:w-32">
+          <AvatarImage src={profile.avatarUrl ?? undefined} className="object-cover" />
+          <AvatarFallback className="bg-zinc-800 text-3xl font-semibold">{initials}</AvatarFallback>
+        </Avatar>
+        <h2 className="mt-5 text-2xl font-bold tracking-tight sm:text-[26px]">
+          {profile.firstName} {profile.lastName}
+        </h2>
+        <button
+          type="button"
+          onClick={copyId}
+          className="mt-2 text-[15px] text-accent hover:underline"
+        >
+          ID {profile.visibleId} · нажмите, чтобы скопировать
+        </button>
+        <p className="mt-1 text-sm text-muted">{profile.email}</p>
+      </div>
+
+      <div className="mx-auto mt-10 w-full max-w-xl space-y-3">
+        <div className="vdf-group divide-y divide-white/[0.06]">
+          <div className="px-4 py-3.5">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted">Дата рождения</p>
+            <p className="mt-1 text-[17px]">
+              {profile.birthDate
+                ? new Date(profile.birthDate).toLocaleDateString('ru-RU')
+                : 'Не указана'}
+            </p>
+          </div>
+          <div className="px-4 py-3.5">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted">Команда</p>
+            <p className="mt-1 text-[17px]">{profile.team?.name ?? '—'}</p>
+          </div>
+          <div className="px-4 py-3.5">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted">Роль</p>
+            <p className="mt-1 text-[17px]">{roles[profile.role] ?? profile.role}</p>
+          </div>
         </div>
-        <Card>
-          <CardContent className="space-y-2 p-4 text-sm">
-            <Row label="Роль" value={roleLabels[user.role] ?? user.role} />
-            <Row
-              label="Дата рождения"
-              value={user.birthDate ? new Date(user.birthDate).toLocaleDateString('ru-RU') : '—'}
-            />
-            <Row label="Команда" value={user.team?.name ?? '—'} />
-          </CardContent>
-        </Card>
-        <Dialog open={editOpen} onOpenChange={setEditOpen}>
-          <DialogTrigger asChild>
-            <Button variant="secondary" className="w-full">
-              Редактировать
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Редактирование</DialogTitle>
-            </DialogHeader>
-            <div className="grid gap-3">
-              <div className="space-y-2">
-                <Label>Имя</Label>
-                <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>Фамилия</Label>
-                <Input value={lastName} onChange={(e) => setLastName(e.target.value)} />
-              </div>
-              <Button className="w-full" onClick={() => void onSave()}>
-                Сохранить
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-        <Button variant="outline" className="w-full" onClick={() => void onEnablePush()}>
-          Включить уведомления
-        </Button>
-        {user.role === 'admin' && (
-          <Button className="w-full" variant="secondary" onClick={() => navigate('/admin')}>
-            Админ-панель
-          </Button>
-        )}
-        <Button variant="destructive" className="w-full" onClick={() => void onLogout()}>
+
+        <div className="vdf-group">
+          <Dialog open={editOpen} onOpenChange={setEditOpen}>
+            <DialogTrigger asChild>
+              <button
+                type="button"
+                className="vdf-group-row font-medium"
+              >
+                <span className="flex size-8 items-center justify-center rounded-lg bg-red-500/25 text-sm">
+                  ✎
+                </span>
+                Редактировать профиль
+                <ChevronRight className="ml-auto h-5 w-5 shrink-0 text-muted" />
+              </button>
+            </DialogTrigger>
+            <DialogContent>
+              <EditProfileForm
+                user={profile}
+                onSaved={(u) => {
+                  setProfile(u)
+                  setUser(u)
+                  setEditOpen(false)
+                }}
+              />
+            </DialogContent>
+          </Dialog>
+
+          {profile.role === 'admin' ? (
+            <Link
+              to="/admin"
+              className="vdf-group-row border-t border-white/[0.06] font-medium"
+            >
+              <span className="flex size-8 items-center justify-center rounded-lg bg-violet-500/30 text-sm">
+                ⚙
+              </span>
+              Админ-панель
+              <ChevronRight className="ml-auto h-5 w-5 shrink-0 text-muted" />
+            </Link>
+          ) : null}
+        </div>
+
+        <Button variant="destructive" className="mt-4 w-full" onClick={doLogout}>
           Выйти
         </Button>
       </div>
@@ -136,11 +151,52 @@ export function ProfilePage() {
   )
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function EditProfileForm({ user, onSaved }: { user: User; onSaved: (u: User) => void }) {
+  const [firstName, setFirstName] = useState(user.firstName)
+  const [lastName, setLastName] = useState(user.lastName)
+  const [avatarUrl, setAvatarUrl] = useState(user.avatarUrl ?? '')
+  const [loading, setLoading] = useState(false)
+
+  async function save() {
+    setLoading(true)
+    try {
+      const { data } = await http.put<User>('/api/users/me', {
+        firstName,
+        lastName,
+        avatarUrl: avatarUrl || null,
+      })
+      onSaved(data)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
-    <div className="flex justify-between gap-4">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="text-right font-medium">{value}</span>
-    </div>
+    <>
+      <DialogHeader>
+        <DialogTitle>Редактирование</DialogTitle>
+      </DialogHeader>
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <Label>Имя</Label>
+          <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+        </div>
+        <div className="space-y-2">
+          <Label>Фамилия</Label>
+          <Input value={lastName} onChange={(e) => setLastName(e.target.value)} />
+        </div>
+        <div className="space-y-2">
+          <Label>URL аватара</Label>
+          <Input
+            value={avatarUrl}
+            onChange={(e) => setAvatarUrl(e.target.value)}
+            placeholder="https://…"
+          />
+        </div>
+        <Button className="w-full" onClick={save} disabled={loading}>
+          Сохранить
+        </Button>
+      </div>
+    </>
   )
 }

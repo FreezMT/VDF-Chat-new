@@ -1,166 +1,200 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
-import { motion } from 'framer-motion'
-import { ArrowLeft, Send } from 'lucide-react'
-import { fetchMessages, markRead } from '@/api/chats'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
+import { http } from '@/api/http'
+import type { Message } from '@/types'
+import { connectSocket, getSocket } from '@/services/socket'
+import { useAuthStore } from '@/stores/authStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { useAuthStore } from '@/stores/authStore'
-import { useChatStore } from '@/stores/chatStore'
-import { getSocket } from '@/services/socket'
-import type { Message } from '@/types'
+import { cn } from '@/lib/utils'
+import { ArrowLeft } from 'lucide-react'
 
 export function ChatRoomPage() {
   const { chatId } = useParams<{ chatId: string }>()
-  const navigate = useNavigate()
-  const location = useLocation()
-  const stateName = (location.state as { name?: string } | null)?.name
-  const user = useAuthStore((s) => s.user)
-  const messagesByChat = useChatStore((s) => s.messagesByChat)
-  const prependMessages = useChatStore((s) => s.prependMessages)
-  const typing = useChatStore((s) => (chatId ? s.typingByChat[chatId] : null))
-  const [text, setText] = useState('')
-  const [title, setTitle] = useState(stateName ?? 'Чат')
-  const [loading, setLoading] = useState(true)
+  const me = useAuthStore((s) => s.user)
+  const [title, setTitle] = useState('Чат')
+  const [messages, setMessages] = useState<Message[]>([])
   const [nextCursor, setNextCursor] = useState<string | null>(null)
+  const [text, setText] = useState('')
+  const [typing, setTyping] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement | null>(null)
-  const topSentinel = useRef<HTMLDivElement | null>(null)
-
-  const messages = chatId ? messagesByChat[chatId] ?? [] : []
-
-  const loadOlder = useCallback(async () => {
-    if (!chatId || !nextCursor) return
-    const data = await fetchMessages(chatId, nextCursor)
-    prependMessages(chatId, data.messages)
-    setNextCursor(data.nextCursor)
-  }, [chatId, nextCursor, prependMessages])
+  const typingTimer = useRef<number | null>(null)
+  const meId = me?.id
 
   useEffect(() => {
     if (!chatId) return
     let cancelled = false
-    ;(async () => {
-      setLoading(true)
-      try {
-        const data = await fetchMessages(chatId)
-        if (cancelled) return
-        useChatStore.setState((s) => ({
-          messagesByChat: { ...s.messagesByChat, [chatId]: data.messages },
-        }))
-        setNextCursor(data.nextCursor)
-        await markRead(chatId)
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    })()
+    async function load() {
+      const { data } = await http.get<{ messages: Message[]; nextCursor: string | null }>(
+        `/api/chats/${chatId}/messages?limit=40`,
+      )
+      if (cancelled) return
+      setMessages(data.messages)
+      setNextCursor(data.nextCursor)
+      await http.post(`/api/chats/${chatId}/read`)
+    }
+    void load()
     return () => {
       cancelled = true
     }
   }, [chatId])
 
   useEffect(() => {
-    if (stateName) setTitle(stateName)
-  }, [stateName])
-
-  useEffect(() => {
     if (!chatId) return
-    const socket = getSocket()
-    socket?.emit('chat:join', { chatId })
+    const s = connectSocket()
+    if (!s) return
+    s.emit('chat:join', { chatId })
+    function onNew(payload: { message: Message }) {
+      if (payload.message.chatId !== chatId) return
+      setMessages((m) => [...m, payload.message])
+      void http.post(`/api/chats/${chatId}/read`)
+    }
+    function onTyping(payload: { chatId: string; firstName: string }) {
+      if (payload.chatId !== chatId) return
+      setTyping(payload.firstName)
+      if (typingTimer.current) window.clearTimeout(typingTimer.current)
+      typingTimer.current = window.setTimeout(() => setTyping(null), 2000)
+    }
+    s.on('message:new', onNew)
+    s.on('message:typing', onTyping)
+    return () => {
+      s.off('message:new', onNew)
+      s.off('message:typing', onTyping)
+    }
   }, [chatId])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages.length, chatId])
+  }, [messages.length])
 
   useEffect(() => {
-    const el = topSentinel.current
-    if (!el || !chatId) return
-    const obs = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) void loadOlder()
-      },
-      { rootMargin: '100px' },
+    if (!chatId || !meId) return
+    void http
+      .get<{
+        chats: {
+          id: string
+          name: string | null
+          members: { id: string; firstName: string; lastName: string }[]
+        }[]
+      }>('/api/chats')
+      .then((r) => {
+        const c = r.data.chats.find((x) => x.id === chatId)
+        if (!c) return
+        if (c.name) setTitle(c.name)
+        else {
+          const other = c.members.find((m) => m.id !== meId)
+          if (other) setTitle(`${other.firstName} ${other.lastName}`)
+        }
+      })
+  }, [chatId, meId])
+
+  const sorted = useMemo(() => messages, [messages])
+
+  async function loadOlder() {
+    if (!chatId || !nextCursor) return
+    const { data } = await http.get<{ messages: Message[]; nextCursor: string | null }>(
+      `/api/chats/${chatId}/messages?limit=40&cursor=${nextCursor}`,
     )
-    obs.observe(el)
-    return () => obs.disconnect()
-  }, [chatId, loadOlder])
+    setMessages((prev) => [...data.messages, ...prev])
+    setNextCursor(data.nextCursor)
+  }
 
   function send() {
-    if (!chatId || !text.trim()) return
-    const socket = getSocket()
-    socket?.emit('message:send', { chatId, content: text.trim() })
+    const t = text.trim()
+    if (!t || !chatId) return
+    const s = getSocket()
+    s?.emit('message:send', { chatId, content: t })
     setText('')
   }
 
-  function onTyping() {
-    if (!chatId) return
-    const socket = getSocket()
-    socket?.emit('message:typing', { chatId })
+  function emitTyping() {
+    const s = getSocket()
+    s?.emit('message:typing', { chatId })
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-2">
-        <Button variant="ghost" size="icon" onClick={() => navigate(-1)} aria-label="Назад">
-          <ArrowLeft className="h-5 w-5" />
+    <div className="flex min-h-[calc(100dvh-6rem)] flex-col lg:min-h-[calc(100dvh-7rem)]">
+      <header className="sticky top-0 z-10 -mx-4 mb-2 flex items-center gap-3 border-b border-white/[0.08] bg-black/80 px-2 py-3 backdrop-blur-md sm:-mx-8 sm:px-3 lg:-mx-12 xl:-mx-16">
+        <Button variant="ghost" size="icon" className="shrink-0 rounded-full" asChild>
+          <Link to="/chats" aria-label="Назад">
+            <ArrowLeft className="h-5 w-5" />
+          </Link>
         </Button>
         <div className="min-w-0 flex-1">
-          <p className="truncate font-semibold">{title}</p>
-          {typing && typing.userId !== user?.id && (
-            <p className="text-xs text-muted-foreground">{typing.firstName} печатает…</p>
-          )}
+          <h1 className="truncate text-[17px] font-semibold sm:text-lg">{title}</h1>
+          {typing ? <p className="text-[13px] text-muted">{typing} печатает…</p> : null}
         </div>
       </header>
-      <ScrollArea className="flex-1 px-3">
-        <div ref={topSentinel} className="h-2" />
-        {loading && <p className="py-4 text-center text-sm text-muted-foreground">Загрузка…</p>}
-        <div className="space-y-2 py-3">
-          {messages.map((m: Message) => {
-            const mine = m.senderId === user?.id
+
+      <div className="flex min-h-0 flex-1 flex-col space-y-2 overflow-y-auto pb-28 pt-2 sm:pb-32">
+        {nextCursor ? (
+          <Button variant="ghost" className="mx-auto text-xs text-muted" onClick={loadOlder}>
+            Ранние сообщения
+          </Button>
+        ) : null}
+        <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-1">
+          {sorted.map((m) => {
+            const mine = m.senderId === meId
             return (
-              <motion.div
-                key={m.id}
-                layout
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                className={`flex ${mine ? 'justify-end' : 'justify-start'}`}
-              >
+              <div key={m.id} className={cn('flex', mine ? 'justify-end' : 'justify-start')}>
                 <div
-                  className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${
-                    mine ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'
-                  }`}
+                  className={cn(
+                    'max-w-[min(85%,42rem)] rounded-[1.15rem] px-3.5 py-2.5 text-[15px] leading-snug shadow-sm',
+                    mine
+                      ? 'bg-accent text-white'
+                      : 'bg-zinc-800/95 text-white',
+                  )}
                 >
-                  {!mine && (
-                    <p className="mb-1 text-xs opacity-80">
-                      {m.sender?.firstName} {m.sender?.lastName}
+                  {!mine ? (
+                    <p className="mb-1 text-[12px] text-white/55">
+                      {m.sender.firstName} {m.sender.lastName}
                     </p>
-                  )}
-                  {m.content && <p className="whitespace-pre-wrap">{m.content}</p>}
-                  {m.mediaUrl && m.mediaType === 'image' && (
-                    <img src={m.mediaUrl} alt="" className="mt-2 max-h-60 rounded-lg" />
-                  )}
+                  ) : null}
+                  <p className="whitespace-pre-wrap">{m.content}</p>
+                  {m.mediaUrl ? (
+                    m.mediaType === 'video' ? (
+                      <video
+                        src={m.mediaUrl}
+                        controls
+                        className="mt-2 max-h-72 w-full rounded-xl"
+                      />
+                    ) : (
+                      <img
+                        src={m.mediaUrl}
+                        alt=""
+                        className="mt-2 max-h-72 w-full rounded-xl object-cover"
+                      />
+                    )
+                  ) : null}
                 </div>
-              </motion.div>
+              </div>
             )
           })}
         </div>
         <div ref={bottomRef} />
-      </ScrollArea>
-      <div className="flex gap-2 border-t border-border p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        <Input
-          placeholder="Сообщение"
-          value={text}
-          onChange={(e) => {
-            setText(e.target.value)
-            onTyping()
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') send()
-          }}
-        />
-        <Button size="icon" onClick={send} aria-label="Отправить">
-          <Send className="h-4 w-4" />
-        </Button>
+      </div>
+
+      <div className="fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom))] left-0 right-0 z-20 border-t border-white/[0.08] bg-black/85 px-4 py-3 backdrop-blur-lg sm:px-8 lg:px-12 xl:px-16">
+        <div className="mx-auto flex max-w-app gap-2">
+          <Input
+            value={text}
+            onChange={(e) => {
+              setText(e.target.value)
+              emitTyping()
+            }}
+            placeholder="Сообщение…"
+            className="flex-1 border-white/[0.12]"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                send()
+              }
+            }}
+          />
+          <Button onClick={send} className="shrink-0 px-5">
+            Отпр.
+          </Button>
+        </div>
       </div>
     </div>
   )

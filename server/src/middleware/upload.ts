@@ -1,26 +1,24 @@
-import multer from 'multer'
-import path from 'node:path'
 import fs from 'node:fs'
+import path from 'node:path'
+import multer from 'multer'
+import { env } from '../config/env.js'
 
-const uploadDir = process.env.UPLOAD_DIR ?? path.join(process.cwd(), 'uploads')
-
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true })
+const dir = path.resolve(env.UPLOAD_DIR)
+if (!fs.existsSync(dir)) {
+  fs.mkdirSync(dir, { recursive: true })
 }
 
 const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, uploadDir),
+  destination: (_req, _file, cb) => {
+    cb(null, dir)
+  },
   filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname) || '.bin'
     cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`)
   },
 })
 
-export const upload = multer({
+export const uploadMiddleware = multer({
   storage,
   limits: { fileSize: 50 * 1024 * 1024 },
 })
-
-export function getUploadDir() {
-  return uploadDir
-}

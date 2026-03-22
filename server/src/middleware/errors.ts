@@ -1,22 +1,30 @@
 import type { NextFunction, Request, Response } from 'express'
 import { ZodError } from 'zod'
 
-export class HttpError extends Error {
+export class AppError extends Error {
   constructor(
-    public status: number,
+    public statusCode: number,
     message: string,
   ) {
     super(message)
+    this.name = 'AppError'
   }
 }
 
-export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction) {
-  if (err instanceof HttpError) {
-    return res.status(err.status).json({ error: err.message })
+export function errorHandler(
+  err: unknown,
+  _req: Request,
+  res: Response,
+  _next: NextFunction,
+): void {
+  if (err instanceof AppError) {
+    res.status(err.statusCode).json({ error: err.message })
+    return
   }
   if (err instanceof ZodError) {
-    return res.status(400).json({ error: 'Validation error', details: err.flatten() })
+    res.status(400).json({ error: 'Validation failed', details: err.flatten() })
+    return
   }
   console.error(err)
-  return res.status(500).json({ error: 'Internal server error' })
+  res.status(500).json({ error: 'Internal server error' })
 }

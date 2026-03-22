@@ -1,23 +1,24 @@
 import { create } from 'zustand'
-import { setAccessToken } from '@/api/client'
-import type { UserPublic } from '@/types'
+import type { User } from '@/types'
 
-interface AuthState {
-  user: UserPublic | null
-  setUser: (u: UserPublic | null) => void
-  setAccessToken: (t: string | null) => void
+type AuthState = {
+  accessToken: string | null
+  user: User | null
+  bootstrapped: boolean
+  setAuth: (accessToken: string, user: User) => void
+  setAccessToken: (token: string) => void
+  setUser: (user: User) => void
   logout: () => void
+  setBootstrapped: (v: boolean) => void
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
+  accessToken: null,
   user: null,
+  bootstrapped: false,
+  setAuth: (accessToken, user) => set({ accessToken, user }),
+  setAccessToken: (accessToken) => set({ accessToken }),
   setUser: (user) => set({ user }),
-  setAccessToken: (token) => {
-    setAccessToken(token)
-    set({})
-  },
-  logout: () => {
-    setAccessToken(null)
-    set({ user: null })
-  },
+  logout: () => set({ accessToken: null, user: null }),
+  setBootstrapped: (bootstrapped) => set({ bootstrapped }),
 }))

@@ -1,22 +1,36 @@
 export type Role = 'dancer' | 'parent' | 'trainer' | 'admin'
 
-export type ChatType = 'private' | 'group'
-
-export interface UserPublic {
+export type User = {
   id: string
   visibleId: string
   firstName: string
   lastName: string
-  email?: string
+  email: string
   role: Role
-  birthDate?: string | null
-  avatarUrl?: string | null
-  teamId?: string | null
-  team?: { id: string; name: string } | null
-  createdAt?: string
+  birthDate: string | null
+  avatarUrl: string | null
+  teamId: string | null
+  team: { id: string; name: string } | null
 }
 
-export interface Message {
+export type ChatListItem = {
+  id: string
+  type: 'private' | 'group'
+  name: string | null
+  avatarUrl: string | null
+  createdAt: string
+  lastMessage: Message | null
+  unreadCount: number
+  members: {
+    id: string
+    firstName: string
+    lastName: string
+    avatarUrl: string | null
+    visibleId: string
+  }[]
+}
+
+export type Message = {
   id: string
   chatId: string
   senderId: string
@@ -25,31 +39,26 @@ export interface Message {
   mediaType: string | null
   createdAt: string
   updatedAt: string
-  sender?: UserPublic
-  readBy?: { userId: string; readAt: string }[]
+  sender: {
+    id: string
+    firstName: string
+    lastName: string
+    avatarUrl: string | null
+  }
 }
 
-export interface ChatListItem {
-  id: string
-  type: ChatType
-  name: string | null
-  avatarUrl: string | null
-  lastMessage: Message | null
-  unreadCount: number
-  members?: { user: UserPublic }[]
-}
-
-export interface Post {
+export type Post = {
   id: string
   authorId: string
   content: string
   mediaUrl: string | null
   mediaType: string | null
   createdAt: string
-  author: UserPublic
-}
-
-export interface CursorPage<T> {
-  items: T[]
-  nextCursor: string | null
+  author: {
+    id: string
+    firstName: string
+    lastName: string
+    avatarUrl: string | null
+    role: Role
+  }
 }

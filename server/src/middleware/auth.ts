@@ -1,25 +1,29 @@
 import type { NextFunction, Request, Response } from 'express'
 import { verifyAccessToken } from '../utils/jwt.js'
-import { prisma } from '../utils/prisma.js'
-import { HttpError } from './errors.js'
+import { AppError } from './errors.js'
+import type { Role } from '@prisma/client'
 
-export interface AuthedRequest extends Request {
-  userId?: string
-  role?: string
+export type AuthedRequest = Request & {
+  userId: string
+  role: Role
 }
 
-export async function requireAuth(req: AuthedRequest, res: Response, next: NextFunction) {
+export function requireAuth(
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+): void {
   try {
     const header = req.headers.authorization
-    const token = header?.startsWith('Bearer ') ? header.slice(7) : null
-    if (!token) throw new HttpError(401, 'Unauthorized')
+    if (!header?.startsWith('Bearer ')) {
+      throw new AppError(401, 'Unauthorized')
+    }
+    const token = header.slice(7)
     const payload = verifyAccessToken(token)
-    const user = await prisma.user.findUnique({ where: { id: payload.sub } })
-    if (!user) throw new HttpError(401, 'Unauthorized')
-    req.userId = user.id
-    req.role = user.role
+    ;(req as AuthedRequest).userId = payload.sub
+    ;(req as AuthedRequest).role = payload.role
     next()
   } catch {
-    return res.status(401).json({ error: 'Unauthorized' })
+    next(new AppError(401, 'Unauthorized'))
   }
 }

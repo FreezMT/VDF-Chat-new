@@ -1,18 +1,18 @@
 import type { Request, Response } from 'express'
 import bcrypt from 'bcryptjs'
 import { z } from 'zod'
-import { HttpError } from '../middleware/errors.js'
-import { prisma } from '../utils/prisma.js'
+import { prisma } from '../prisma.js'
+import { AppError } from '../middleware/errors.js'
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../utils/jwt.js'
 import { generateUniqueVisibleId } from '../utils/visibleId.js'
-import { toUserPublic } from '../utils/userPublic.js'
+import { REFRESH_COOKIE, refreshCookieOptions } from '../utils/cookies.js'
 
 const registerSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8),
   firstName: z.string().min(1),
   lastName: z.string().min(1),
-  email: z.string().email(),
-  password: z.string().min(6),
-  birthDate: z.string().optional(),
+  birthDate: z.string().datetime().optional(),
   role: z.enum(['dancer', 'parent']),
 })
 
@@ -21,68 +21,97 @@ const loginSchema = z.object({
   password: z.string().min(1),
 })
 
-const REFRESH_COOKIE = 'refreshToken'
-const cookieOpts = (res: Response) => ({
-  httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax' as const,
-  maxAge: 30 * 24 * 60 * 60 * 1000,
-  path: '/',
-})
+function userPublic(u: {
+  id: string
+  visibleId: string
+  firstName: string
+  lastName: string
+  email: string
+  role: string
+  birthDate: Date | null
+  avatarUrl: string | null
+  teamId: string | null
+  createdAt: Date
+  team?: { id: string; name: string } | null
+}) {
+  return {
+    id: u.id,
+    visibleId: u.visibleId,
+    firstName: u.firstName,
+    lastName: u.lastName,
+    email: u.email,
+    role: u.role,
+    birthDate: u.birthDate,
+    avatarUrl: u.avatarUrl,
+    teamId: u.teamId,
+    createdAt: u.createdAt,
+    team: u.team ?? null,
+  }
+}
 
-export async function register(req: Request, res: Response) {
+export async function register(req: Request, res: Response): Promise<void> {
   const body = registerSchema.parse(req.body)
   const exists = await prisma.user.findUnique({ where: { email: body.email } })
-  if (exists) throw new HttpError(400, 'Email already registered')
+  if (exists) throw new AppError(409, 'Email already registered')
+
   const passwordHash = await bcrypt.hash(body.password, 10)
   const visibleId = await generateUniqueVisibleId()
   const user = await prisma.user.create({
     data: {
-      visibleId,
-      firstName: body.firstName,
-      lastName: body.lastName,
       email: body.email,
       passwordHash,
+      firstName: body.firstName,
+      lastName: body.lastName,
       role: body.role,
+      visibleId,
       birthDate: body.birthDate ? new Date(body.birthDate) : undefined,
     },
-    include: { team: true },
   })
-  const payload = { sub: user.id, role: user.role }
-  const accessToken = signAccessToken(payload)
-  const refreshToken = signRefreshToken(payload)
-  res.cookie(REFRESH_COOKIE, refreshToken, cookieOpts(res))
-  return res.json({ accessToken, user: toUserPublic(user) })
+
+  const accessToken = signAccessToken(user.id, user.role)
+  const refreshToken = signRefreshToken(user.id)
+  res.cookie(REFRESH_COOKIE, refreshToken, refreshCookieOptions())
+  res.status(201).json({
+    user: userPublic({ ...user, team: null }),
+    accessToken,
+  })
 }
 
-export async function login(req: Request, res: Response) {
+export async function login(req: Request, res: Response): Promise<void> {
   const body = loginSchema.parse(req.body)
-  const user = await prisma.user.findUnique({ where: { email: body.email }, include: { team: true } })
-  if (!user) throw new HttpError(401, 'Invalid credentials')
+  const user = await prisma.user.findUnique({ where: { email: body.email } })
+  if (!user) throw new AppError(401, 'Invalid credentials')
   const ok = await bcrypt.compare(body.password, user.passwordHash)
-  if (!ok) throw new HttpError(401, 'Invalid credentials')
-  const payload = { sub: user.id, role: user.role }
-  const accessToken = signAccessToken(payload)
-  const refreshToken = signRefreshToken(payload)
-  res.cookie(REFRESH_COOKIE, refreshToken, cookieOpts(res))
-  return res.json({ accessToken, user: toUserPublic(user) })
+  if (!ok) throw new AppError(401, 'Invalid credentials')
+
+  const accessToken = signAccessToken(user.id, user.role)
+  const refreshToken = signRefreshToken(user.id)
+  res.cookie(REFRESH_COOKIE, refreshToken, refreshCookieOptions())
+  res.json({
+    user: userPublic({ ...user, team: null }),
+    accessToken,
+  })
 }
 
-export async function refresh(req: Request, res: Response) {
+export async function refresh(req: Request, res: Response): Promise<void> {
   const token = req.cookies?.[REFRESH_COOKIE] as string | undefined
-  if (!token) throw new HttpError(401, 'No refresh token')
+  if (!token) throw new AppError(401, 'No refresh token')
+  let payload
   try {
-    const payload = verifyRefreshToken(token)
-    const user = await prisma.user.findUnique({ where: { id: payload.sub } })
-    if (!user) throw new HttpError(401, 'Invalid user')
-    const accessToken = signAccessToken({ sub: user.id, role: user.role })
-    return res.json({ accessToken })
+    payload = verifyRefreshToken(token)
   } catch {
-    throw new HttpError(401, 'Invalid refresh token')
+    throw new AppError(401, 'Invalid refresh token')
   }
+  const user = await prisma.user.findUnique({ where: { id: payload.sub } })
+  if (!user) throw new AppError(401, 'User not found')
+
+  const accessToken = signAccessToken(user.id, user.role)
+  const refreshToken = signRefreshToken(user.id)
+  res.cookie(REFRESH_COOKIE, refreshToken, refreshCookieOptions())
+  res.json({ accessToken })
 }
 
-export async function logout(_req: Request, res: Response) {
+export async function logout(_req: Request, res: Response): Promise<void> {
   res.clearCookie(REFRESH_COOKIE, { path: '/' })
-  return res.json({ ok: true })
+  res.json({ ok: true })
 }

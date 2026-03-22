@@ -1,143 +1,168 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { listUsers, setUserRole, createTeam, assignTeam, deleteUser } from '@/api/admin'
-import { TopBar } from '@/components/layout/TopBar'
+import { http } from '@/api/http'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Card, CardContent } from '@/components/ui/card'
-import { useAuthStore } from '@/stores/authStore'
-import type { Role, UserPublic } from '@/types'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import type { Role } from '@/types'
 
-const roles: Role[] = ['dancer', 'parent', 'trainer', 'admin']
+type Row = {
+  id: string
+  visibleId: string
+  firstName: string
+  lastName: string
+  email: string
+  role: Role
+  teamId: string | null
+  team: { id: string; name: string } | null
+}
 
 export function AdminPage() {
-  const navigate = useNavigate()
-  const me = useAuthStore((s) => s.user)
-  const [users, setUsers] = useState<UserPublic[]>([])
+  const [users, setUsers] = useState<Row[]>([])
   const [q, setQ] = useState('')
-  const [teamName, setTeamName] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [roleFilter, setRoleFilter] = useState<string>('all')
 
-  async function reload() {
-    const data = await listUsers(q ? { q } : undefined)
-    setUsers(data)
+  async function load() {
+    const params = new URLSearchParams()
+    if (q.trim()) params.set('q', q.trim())
+    if (roleFilter !== 'all') params.set('role', roleFilter)
+    const { data } = await http.get<{ users: Row[] }>(`/api/admin/users?${params.toString()}`)
+    setUsers(data.users)
   }
 
   useEffect(() => {
-    if (me?.role !== 'admin') {
-      navigate('/feed', { replace: true })
-      return
-    }
-    let cancelled = false
-    ;(async () => {
-      try {
-        await reload()
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [me?.role, navigate])
+    void load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  async function onSearch() {
+  async function patchUserRole(id: string, role: Role) {
+    await http.put(`/api/admin/users/${id}/role`, { role })
+    void load()
+  }
+
+  async function remove(id: string) {
+    if (!confirm('Удалить пользователя?')) return
+    await http.delete(`/api/admin/users/${id}`)
+    void load()
+  }
+
+  return (
+    <div className="mx-auto w-full max-w-4xl space-y-6 pb-4 pt-2">
+      <h1 className="text-[22px] font-bold tracking-tight sm:text-2xl">Админ-панель</h1>
+
+      <div className="vdf-group p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+          <div className="min-w-0 flex-1 space-y-2">
+            <Label className="text-[13px] text-muted">Поиск</Label>
+            <Input placeholder="Имя, email, ID…" value={q} onChange={(e) => setQ(e.target.value)} />
+          </div>
+          <div className="space-y-2 lg:w-48">
+            <Label className="text-[13px] text-muted">Роль</Label>
+            <Select value={roleFilter} onValueChange={setRoleFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="Все" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все роли</SelectItem>
+                <SelectItem value="dancer">Танцор</SelectItem>
+                <SelectItem value="parent">Родитель</SelectItem>
+                <SelectItem value="trainer">Тренер</SelectItem>
+                <SelectItem value="admin">Админ</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button type="button" className="lg:shrink-0" onClick={load}>
+            Найти
+          </Button>
+        </div>
+      </div>
+
+      <div className="vdf-group divide-y divide-white/[0.06]">
+        {users.map((u) => (
+          <div key={u.id} className="px-4 py-4 sm:px-5">
+            <p className="text-[17px] font-semibold">
+              {u.firstName} {u.lastName}{' '}
+              <span className="font-normal text-muted">({u.visibleId})</span>
+            </p>
+            <p className="mt-1 text-sm text-muted">{u.email}</p>
+            <p className="mt-1 text-sm text-muted">
+              Роль: {u.role} · Команда: {u.team?.name ?? '—'}
+            </p>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <MiniRole id={u.id} current={u.role} onPatch={patchUserRole} />
+              <Button size="sm" variant="outline" onClick={() => remove(u.id)}>
+                Удалить
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <CreateTeamForm onCreated={load} />
+    </div>
+  )
+}
+
+function MiniRole({
+  id,
+  current,
+  onPatch,
+}: {
+  id: string
+  current: Role
+  onPatch: (id: string, role: Role) => void
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Label className="text-xs text-muted">Роль</Label>
+      <Select value={current} onValueChange={(v) => onPatch(id, v as Role)}>
+        <SelectTrigger className="h-10 w-[150px]">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="dancer">dancer</SelectItem>
+          <SelectItem value="parent">parent</SelectItem>
+          <SelectItem value="trainer">trainer</SelectItem>
+          <SelectItem value="admin">admin</SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
+function CreateTeamForm({ onCreated }: { onCreated: () => void }) {
+  const [name, setName] = useState('')
+  const [loading, setLoading] = useState(false)
+  async function submit() {
+    if (!name.trim()) return
     setLoading(true)
     try {
-      await reload()
+      await http.post('/api/admin/teams', { name: name.trim() })
+      setName('')
+      onCreated()
     } finally {
       setLoading(false)
     }
   }
-
-  async function onRole(id: string, role: Role) {
-    await setUserRole(id, role)
-    await reload()
-  }
-
-  async function onCreateTeam() {
-    if (!teamName.trim()) return
-    await createTeam(teamName.trim())
-    setTeamName('')
-    await reload()
-  }
-
-  async function onAssign(userId: string, teamId: string) {
-    await assignTeam(userId, teamId)
-    await reload()
-  }
-
-  async function onDelete(id: string) {
-    if (!confirm('Удалить пользователя?')) return
-    await deleteUser(id)
-    await reload()
-  }
-
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <TopBar title="Админ" />
-      <div className="space-y-4 overflow-y-auto px-4 py-4">
-        <div className="flex gap-2">
-          <Input placeholder="Поиск" value={q} onChange={(e) => setQ(e.target.value)} />
-          <Button type="button" variant="secondary" onClick={() => void onSearch()}>
-            Найти
-          </Button>
-        </div>
-        <Card>
-          <CardContent className="space-y-2 p-4">
-            <p className="text-sm font-medium">Новая команда</p>
-            <div className="flex gap-2">
-              <Input value={teamName} onChange={(e) => setTeamName(e.target.value)} placeholder="Название" />
-              <Button type="button" onClick={() => void onCreateTeam()}>
-                Создать
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-        {loading && <p className="text-sm text-muted-foreground">Загрузка…</p>}
-        <div className="space-y-3">
-          {users.map((u) => (
-            <Card key={u.id}>
-              <CardContent className="space-y-2 p-4 text-sm">
-                <div className="font-medium">
-                  {u.firstName} {u.lastName}{' '}
-                  <span className="text-muted-foreground">({u.visibleId})</span>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {roles.map((r) => (
-                    <Button
-                      key={r}
-                      size="sm"
-                      variant={u.role === r ? 'default' : 'outline'}
-                      onClick={() => void onRole(u.id, r)}
-                    >
-                      {r}
-                    </Button>
-                  ))}
-                </div>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="team UUID"
-                    className="font-mono text-xs"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        void onAssign(u.id, (e.target as HTMLInputElement).value)
-                      }
-                    }}
-                  />
-                </div>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  disabled={u.id === me?.id}
-                  onClick={() => void onDelete(u.id)}
-                >
-                  Удалить
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+    <div className="vdf-group p-4 sm:p-5">
+      <p className="mb-3 text-[17px] font-semibold">Новая команда</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <Input
+          className="flex-1"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Название команды"
+        />
+        <Button type="button" onClick={submit} disabled={loading}>
+          Создать
+        </Button>
       </div>
     </div>
   )

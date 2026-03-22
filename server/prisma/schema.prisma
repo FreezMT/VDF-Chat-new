@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -35,10 +35,11 @@ model User {
 
   sentMessages      Message[]
   chatMembers       ChatMember[]
-  friends           Friendship[]     @relation("userFriends")
-  friendOf          Friendship[]     @relation("friendOf")
+  friends           Friendship[]  @relation("userFriends")
+  friendOf          Friendship[]  @relation("friendOf")
   posts             Post[]
   pushSubscriptions PushSubscription[]
+  readReceipts      ReadReceipt[]
 }
 
 model Team {
@@ -51,8 +52,8 @@ model Friendship {
   id        String   @id @default(uuid())
   userId    String
   friendId  String
-  user      User     @relation("userFriends", fields: [userId], references: [id])
-  friend    User     @relation("friendOf", fields: [friendId], references: [id])
+  user      User     @relation("userFriends", fields: [userId], references: [id], onDelete: Cascade)
+  friend    User     @relation("friendOf", fields: [friendId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
 
   @@unique([userId, friendId])
@@ -73,8 +74,8 @@ model ChatMember {
   id       String   @id @default(uuid())
   chatId   String
   userId   String
-  chat     Chat     @relation(fields: [chatId], references: [id])
-  user     User     @relation(fields: [userId], references: [id])
+  chat     Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   joinedAt DateTime @default(now())
   muted    Boolean  @default(false)
 
@@ -91,8 +92,8 @@ model Message {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   readBy    ReadReceipt[]
-  chat      Chat     @relation(fields: [chatId], references: [id])
-  sender    User     @relation(fields: [senderId], references: [id])
+  chat      Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  sender    User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
 }
 
 model ReadReceipt {
@@ -100,7 +101,8 @@ model ReadReceipt {
   messageId String
   userId    String
   readAt    DateTime @default(now())
-  message   Message  @relation(fields: [messageId], references: [id])
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([messageId, userId])
 }
@@ -112,14 +114,14 @@ model Post {
   mediaUrl  String?
   mediaType String?
   createdAt DateTime @default(now())
-  author    User     @relation(fields: [authorId], references: [id])
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
 }
 
 model PushSubscription {
-  id       String @id @default(uuid())
-  userId   String
-  endpoint String @unique
-  p256dh   String
-  auth     String
-  user     User   @relation(fields: [userId], references: [id])
+  id        String @id @default(uuid())
+  userId    String
+  endpoint  String @unique
+  p256dh    String
+  auth      String
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

@@ -1,11 +1,17 @@
+import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
-export function SafeArea({ className, children }: { className?: string; children: React.ReactNode }) {
+export function SafeArea({
+  className,
+  children,
+}: {
+  className?: string
+  children: ReactNode
+}) {
   return (
     <div
       className={cn(
-        'min-h-dvh w-full max-w-lg mx-auto flex flex-col',
-        'pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]',
+        'min-h-[100dvh] flex flex-col bg-background pb-[calc(4.5rem+env(safe-area-inset-bottom))]',
         className,
       )}
     >

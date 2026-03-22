@@ -1,200 +1,168 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { motion } from 'framer-motion'
-import { Plus } from 'lucide-react'
-import { fetchFeed, createPost, deletePost } from '@/api/feed'
-import { TopBar } from '@/components/layout/TopBar'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { useAuthStore } from '@/stores/authStore'
-import { useFeedStore } from '@/stores/feedStore'
+import { http } from '@/api/http'
 import type { Post } from '@/types'
+import { useAuthStore } from '@/stores/authStore'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
 
-function PostCard({
-  post,
-  canModerate,
-  onDelete,
-}: {
-  post: Post
-  canModerate: boolean
-  onDelete: (id: string) => void
-}) {
-  const initials = `${post.author.firstName[0]}${post.author.lastName[0]}`
+function PostCard({ post, onDelete }: { post: Post; onDelete: (id: string) => void }) {
+  const me = useAuthStore((s) => s.user)
+  const initials = `${post.author.firstName[0] ?? ''}${post.author.lastName[0] ?? ''}`
+  const canDelete = me?.id === post.authorId || me?.role === 'admin'
   return (
-    <Card className="overflow-hidden border-border/80">
-      <CardContent className="p-4">
-        <div className="flex gap-3">
-          <Avatar className="h-10 w-10">
-            {post.author.avatarUrl && <AvatarImage src={post.author.avatarUrl} alt="" />}
-            <AvatarFallback>{initials}</AvatarFallback>
-          </Avatar>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <p className="font-medium">
-                  {post.author.firstName} {post.author.lastName}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {new Date(post.createdAt).toLocaleString('ru-RU')}
-                </p>
-              </div>
-              {canModerate && (
-                <Button variant="ghost" size="sm" className="text-destructive" onClick={() => onDelete(post.id)}>
-                  Удалить
-                </Button>
-              )}
-            </div>
-            <p className="mt-2 whitespace-pre-wrap text-sm">{post.content}</p>
-            {post.mediaUrl && post.mediaType === 'image' && (
-              <img src={post.mediaUrl} alt="" className="mt-3 max-h-80 w-full rounded-xl object-cover" />
-            )}
-            {post.mediaUrl && post.mediaType === 'video' && (
-              <video src={post.mediaUrl} controls className="mt-3 max-h-80 w-full rounded-xl" />
-            )}
-          </div>
+    <article className="border-b border-white/[0.08] py-6 last:border-b-0 sm:py-8">
+      <div className="mb-4 flex items-start gap-3 sm:gap-4">
+        <Avatar className="h-11 w-11 shrink-0 border border-white/10 sm:h-12 sm:w-12">
+          <AvatarImage src={post.author.avatarUrl ?? undefined} />
+          <AvatarFallback className="bg-zinc-800">{initials}</AvatarFallback>
+        </Avatar>
+        <div className="min-w-0">
+          <p className="text-[17px] font-semibold leading-tight">
+            {post.author.firstName} {post.author.lastName}
+          </p>
+          <p className="text-[13px] text-muted">
+            {new Date(post.createdAt).toLocaleString('ru-RU')}
+          </p>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+      <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-white/95">{post.content}</p>
+      {post.mediaUrl ? (
+        <div className="mt-4 overflow-hidden rounded-2xl border border-white/[0.08]">
+          {post.mediaType === 'video' ? (
+            <video src={post.mediaUrl} controls className="max-h-[min(70vh,480px)] w-full object-cover" />
+          ) : (
+            <img
+              src={post.mediaUrl}
+              alt=""
+              className="max-h-[min(70vh,480px)] w-full object-cover"
+            />
+          )}
+        </div>
+      ) : null}
+      {canDelete ? (
+        <Button variant="ghost" size="sm" className="mt-4 text-red-400 hover:bg-red-500/10" onClick={() => onDelete(post.id)}>
+          Удалить
+        </Button>
+      ) : null}
+    </article>
   )
 }
 
 export function FeedPage() {
   const user = useAuthStore((s) => s.user)
-  const posts = useFeedStore((s) => s.posts)
-  const nextCursor = useFeedStore((s) => s.nextCursor)
-  const setPosts = useFeedStore((s) => s.setPosts)
-  const appendPosts = useFeedStore((s) => s.appendPosts)
-  const prependPost = useFeedStore((s) => s.prependPost)
-  const removePost = useFeedStore((s) => s.removePost)
-  const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
-  const [open, setOpen] = useState(false)
-  const [content, setContent] = useState('')
-  const sentinelRef = useRef<HTMLDivElement | null>(null)
   const canPost = user?.role === 'trainer' || user?.role === 'admin'
+  const [posts, setPosts] = useState<Post[]>([])
+  const [cursor, setCursor] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
 
   const load = useCallback(
-    async (cursor?: string) => {
-      const data = await fetchFeed(cursor)
-      if (cursor) appendPosts(data.posts, data.nextCursor)
-      else setPosts(data.posts, data.nextCursor)
+    async (reset: boolean) => {
+      setLoading(true)
+      try {
+        const params = new URLSearchParams({ limit: '20' })
+        const c = reset ? null : cursor
+        if (!reset && c) params.set('cursor', c)
+        const { data } = await http.get<{ posts: Post[]; nextCursor: string | null }>(
+          `/api/feed?${params.toString()}`,
+        )
+        setPosts((prev) => (reset ? data.posts : [...prev, ...data.posts]))
+        setCursor(data.nextCursor)
+      } finally {
+        setLoading(false)
+      }
     },
-    [appendPosts, setPosts],
+    [cursor],
   )
 
   useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      setLoading(true)
-      try {
-        await load()
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [load])
+    void load(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     const el = sentinelRef.current
-    if (!el || !nextCursor) return
-    const obs = new IntersectionObserver(
+    if (!el) return
+    const io = new IntersectionObserver(
       (entries) => {
-        if (entries[0]?.isIntersecting) {
-          void load(nextCursor)
-        }
+        if (entries[0]?.isIntersecting && cursor && !loading) void load(false)
       },
       { rootMargin: '200px' },
     )
-    obs.observe(el)
-    return () => obs.disconnect()
-  }, [load, nextCursor])
-
-  async function onRefresh() {
-    setRefreshing(true)
-    try {
-      await load()
-    } finally {
-      setRefreshing(false)
-    }
-  }
-
-  async function onCreate() {
-    if (!content.trim()) return
-    const post = await createPost(content.trim())
-    prependPost(post)
-    setContent('')
-    setOpen(false)
-  }
+    io.observe(el)
+    return () => io.disconnect()
+  }, [cursor, load, loading])
 
   async function onDelete(id: string) {
-    await deletePost(id)
-    removePost(id)
+    await http.delete(`/api/feed/${id}`)
+    setPosts((p) => p.filter((x) => x.id !== id))
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <TopBar
-        title="Лента"
-        right={
-          canPost ? (
-            <Dialog open={open} onOpenChange={setOpen}>
-              <DialogTrigger asChild>
-                <Button size="icon" variant="secondary" className="rounded-full">
-                  <Plus className="h-5 w-5" />
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Новый пост</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-3">
-                  <Input
-                    placeholder="Текст поста"
-                    value={content}
-                    onChange={(e) => setContent(e.target.value)}
-                  />
-                  <Button className="w-full" onClick={() => void onCreate()}>
-                    Опубликовать
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
-          ) : null
-        }
-      />
-      <div
-        className="flex-1 overflow-y-auto px-4 py-3"
-        onTouchStart={(e) => {
-          const startY = e.touches[0].clientY
-          const onMove = (ev: TouchEvent) => {
-            if (ev.touches[0].clientY - startY > 80) {
-              void onRefresh()
-              window.removeEventListener('touchmove', onMove)
-            }
-          }
-          window.addEventListener('touchmove', onMove, { passive: true })
-        }}
-      >
-        {refreshing && <p className="mb-2 text-center text-xs text-muted-foreground">Обновление…</p>}
-        {loading && <p className="text-center text-sm text-muted-foreground">Загрузка…</p>}
-        <div className="space-y-3">
-          {posts.map((p) => (
-            <motion.div key={p.id} layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
-              <PostCard
-                post={p}
-                canModerate={user?.role === 'admin' || p.authorId === user?.id}
-                onDelete={onDelete}
-              />
-            </motion.div>
-          ))}
-        </div>
-        <div ref={sentinelRef} className="h-4" />
+    <div className="mx-auto w-full max-w-3xl pb-4">
+      <header className="mb-6 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-[22px] font-bold tracking-tight sm:text-2xl">Лента</h1>
+        {canPost ? (
+          <CreatePostDialog onCreated={(p) => setPosts((prev) => [p, ...prev])} />
+        ) : null}
+      </header>
+      <div>
+        {posts.map((p) => (
+          <PostCard key={p.id} post={p} onDelete={onDelete} />
+        ))}
       </div>
+      <div ref={sentinelRef} className="h-4" />
+      {loading ? <p className="py-6 text-center text-sm text-muted">Загрузка…</p> : null}
     </div>
+  )
+}
+
+function CreatePostDialog({ onCreated }: { onCreated: (p: Post) => void }) {
+  const [open, setOpen] = useState(false)
+  const [content, setContent] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  async function submit() {
+    if (!content.trim()) return
+    setLoading(true)
+    try {
+      const { data } = await http.post<{ post: Post }>('/api/feed', { content: content.trim() })
+      onCreated(data.post)
+      setContent('')
+      setOpen(false)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="secondary">
+          Создать пост
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Новый пост</DialogTitle>
+        </DialogHeader>
+        <Textarea
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          placeholder="Текст поста…"
+        />
+        <Button className="w-full" onClick={submit} disabled={loading}>
+          Опубликовать
+        </Button>
+      </DialogContent>
+    </Dialog>
   )
 }

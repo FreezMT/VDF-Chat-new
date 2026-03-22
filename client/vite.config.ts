@@ -1,14 +1,17 @@
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
   plugins: [
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['icons/*.png'],
+      includeAssets: ['icons/icon-192.png', 'icons/icon-512.png'],
       manifest: {
         name: 'VDF Chat',
         short_name: 'VDF',
@@ -20,20 +23,26 @@ export default defineConfig({
         scope: '/',
         start_url: '/',
         icons: [
-          { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+          {
+            src: '/icons/icon-192.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'any maskable',
+          },
+          {
+            src: '/icons/icon-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any maskable',
+          },
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/.*\.(?:png|jpg|jpeg|svg|gif|webp)$/,
             handler: 'CacheFirst',
-            options: {
-              cacheName: 'images',
-              expiration: { maxEntries: 100 },
-            },
+            options: { cacheName: 'images', expiration: { maxEntries: 100 } },
           },
         ],
       },
@@ -41,20 +50,14 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      '@': path.resolve(__dirname, 'src'),
     },
   },
   server: {
-    port: 5173,
     proxy: {
-      '/api': {
-        target: 'http://localhost:4000',
-        changeOrigin: true,
-      },
-      '/socket.io': {
-        target: 'http://localhost:4000',
-        ws: true,
-      },
+      '/api': { target: 'http://localhost:4000', changeOrigin: true, secure: false },
+      '/socket.io': { target: 'http://localhost:4000', ws: true, changeOrigin: true },
+      '/uploads': { target: 'http://localhost:4000', changeOrigin: true },
     },
   },
 })

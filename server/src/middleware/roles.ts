@@ -1,11 +1,14 @@
-import type { Response, NextFunction } from 'express'
+import type { NextFunction, Request, Response } from 'express'
+import type { Role } from '@prisma/client'
 import type { AuthedRequest } from './auth.js'
-import { HttpError } from './errors.js'
+import { AppError } from './errors.js'
 
-export function requireRoles(...roles: string[]) {
-  return (req: AuthedRequest, _res: Response, next: NextFunction) => {
-    if (!req.role || !roles.includes(req.role)) {
-      return next(new HttpError(403, 'Forbidden'))
+export function requireRoles(...allowed: Role[]) {
+  return (req: Request, _res: Response, next: NextFunction): void => {
+    const r = req as AuthedRequest
+    if (!allowed.includes(r.role)) {
+      next(new AppError(403, 'Forbidden'))
+      return
     }
     next()
   }
