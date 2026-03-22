@@ -6,27 +6,34 @@ import { AppError } from '../middleware/errors.js'
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../utils/jwt.js'
 import { generateUniqueVisibleId } from '../utils/visibleId.js'
 import { REFRESH_COOKIE, refreshCookieOptions } from '../utils/cookies.js'
+import { isAllowedTeamValue, teamLabelFromValue } from '../constants/vdfTeams.js'
 
 const registerSchema = z.object({
-  email: z.string().email(),
+  login: z.string().min(3).max(32),
   password: z.string().min(8),
   firstName: z.string().min(1),
   lastName: z.string().min(1),
-  birthDate: z.string().datetime().optional(),
+  birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   role: z.enum(['dancer', 'parent']),
+  teamValue: z.string(),
 })
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  login: z.string().min(1),
   password: z.string().min(1),
 })
+
+function normalizeLogin(s: string): string {
+  return s.trim().toLowerCase()
+}
 
 function userPublic(u: {
   id: string
   visibleId: string
   firstName: string
   lastName: string
-  email: string
+  login: string | null
+  email: string | null
   role: string
   birthDate: Date | null
   avatarUrl: string | null
@@ -39,6 +46,7 @@ function userPublic(u: {
     visibleId: u.visibleId,
     firstName: u.firstName,
     lastName: u.lastName,
+    login: u.login,
     email: u.email,
     role: u.role,
     birthDate: u.birthDate,
@@ -51,20 +59,37 @@ function userPublic(u: {
 
 export async function register(req: Request, res: Response): Promise<void> {
   const body = registerSchema.parse(req.body)
-  const exists = await prisma.user.findUnique({ where: { email: body.email } })
-  if (exists) throw new AppError(409, 'Email already registered')
+  if (!isAllowedTeamValue(body.teamValue)) {
+    throw new AppError(400, 'Invalid team')
+  }
+  const label = teamLabelFromValue(body.teamValue)
+  if (!label) throw new AppError(400, 'Invalid team')
+
+  const loginNorm = normalizeLogin(body.login)
+  const exists = await prisma.user.findUnique({ where: { login: loginNorm } })
+  if (exists) throw new AppError(409, 'Login already taken')
+
+  const team = await prisma.team.upsert({
+    where: { name: label },
+    create: { name: label },
+    update: {},
+  })
 
   const passwordHash = await bcrypt.hash(body.password, 10)
   const visibleId = await generateUniqueVisibleId()
+  const birthDate = new Date(`${body.birthDate}T12:00:00`)
+
   const user = await prisma.user.create({
     data: {
-      email: body.email,
+      login: loginNorm,
+      email: null,
       passwordHash,
-      firstName: body.firstName,
-      lastName: body.lastName,
+      firstName: body.firstName.trim(),
+      lastName: body.lastName.trim(),
       role: body.role,
       visibleId,
-      birthDate: body.birthDate ? new Date(body.birthDate) : undefined,
+      birthDate,
+      teamId: team.id,
     },
   })
 
@@ -72,14 +97,20 @@ export async function register(req: Request, res: Response): Promise<void> {
   const refreshToken = signRefreshToken(user.id)
   res.cookie(REFRESH_COOKIE, refreshToken, refreshCookieOptions())
   res.status(201).json({
-    user: userPublic({ ...user, team: null }),
+    user: userPublic({ ...user, team }),
     accessToken,
   })
 }
 
 export async function login(req: Request, res: Response): Promise<void> {
   const body = loginSchema.parse(req.body)
-  const user = await prisma.user.findUnique({ where: { email: body.email } })
+  const raw = body.login.trim()
+  const user = raw.includes('@')
+    ? await prisma.user.findUnique({ where: { email: raw }, include: { team: true } })
+    : await prisma.user.findUnique({
+        where: { login: normalizeLogin(raw) },
+        include: { team: true },
+      })
   if (!user) throw new AppError(401, 'Invalid credentials')
   const ok = await bcrypt.compare(body.password, user.passwordHash)
   if (!ok) throw new AppError(401, 'Invalid credentials')
@@ -88,7 +119,7 @@ export async function login(req: Request, res: Response): Promise<void> {
   const refreshToken = signRefreshToken(user.id)
   res.cookie(REFRESH_COOKIE, refreshToken, refreshCookieOptions())
   res.json({
-    user: userPublic({ ...user, team: null }),
+    user: userPublic({ ...user, team: user.team }),
     accessToken,
   })
 }

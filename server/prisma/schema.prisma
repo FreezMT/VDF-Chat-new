@@ -24,7 +24,8 @@ model User {
   visibleId     String    @unique
   firstName     String
   lastName      String
-  email         String    @unique
+  login         String?   @unique
+  email         String?   @unique
   passwordHash  String
   role          Role      @default(dancer)
   birthDate     DateTime?

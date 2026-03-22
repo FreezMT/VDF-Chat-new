@@ -10,7 +10,8 @@ function publicUser(u: {
   visibleId: string
   firstName: string
   lastName: string
-  email: string
+  login: string | null
+  email: string | null
   role: string
   birthDate: Date | null
   avatarUrl: string | null
@@ -22,6 +23,7 @@ function publicUser(u: {
     visibleId: u.visibleId,
     firstName: u.firstName,
     lastName: u.lastName,
+    login: u.login,
     email: u.email,
     role: u.role,
     birthDate: u.birthDate,

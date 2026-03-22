@@ -22,6 +22,7 @@ export async function listUsers(req: AuthedRequest, res: Response): Promise<void
           ? {
               OR: [
                 { email: { contains: q } },
+                { login: { contains: q } },
                 { firstName: { contains: q } },
                 { lastName: { contains: q } },
                 { visibleId: { contains: q } },
@@ -43,6 +44,7 @@ export async function listUsers(req: AuthedRequest, res: Response): Promise<void
       visibleId: u.visibleId,
       firstName: u.firstName,
       lastName: u.lastName,
+      login: u.login,
       email: u.email,
       role: u.role,
       teamId: u.teamId,

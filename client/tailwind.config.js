@@ -7,10 +7,12 @@ export default {
   theme: {
     extend: {
       colors: {
-        background: '#000000',
+        background: '#121212',
+        app: '#121212',
         surface: '#1c1c1e',
         'surface-2': '#2c2c2e',
-        accent: '#7C3AED',
+        pill: '#2c2c2e',
+        accent: '#3b8eff',
         muted: '#8E8E93',
       },
       borderRadius: {
@@ -19,6 +21,7 @@ export default {
       },
       maxWidth: {
         app: '1600px',
+        profile: '28rem',
       },
       fontFamily: {
         sans: [

@@ -7,12 +7,14 @@ import * as feed from '../controllers/feedController.js'
 import * as admin from '../controllers/adminController.js'
 import * as push from '../controllers/pushController.js'
 import * as upload from '../controllers/uploadController.js'
+import * as teams from '../controllers/teamsController.js'
 import { requireAuth } from '../middleware/auth.js'
 import { requireRoles } from '../middleware/roles.js'
 import { uploadMiddleware } from '../middleware/upload.js'
 
 const r = Router()
 
+r.get('/teams', asyncHandler(teams.listTeams))
 r.post('/auth/register', asyncHandler(auth.register))
 r.post('/auth/login', asyncHandler(auth.login))
 r.post('/auth/refresh', asyncHandler(auth.refresh))

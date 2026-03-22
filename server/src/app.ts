@@ -4,7 +4,7 @@ import cookieParser from 'cookie-parser'
 import helmet from 'helmet'
 import path from 'node:path'
 import rateLimit from 'express-rate-limit'
-import { env } from './config/env.js'
+import { clientOrigins, env } from './config/env.js'
 import { apiRouter } from './routes/index.js'
 import { errorHandler } from './middleware/errors.js'
 
@@ -17,7 +17,7 @@ export function createApp(): express.Express {
   )
   app.use(
     cors({
-      origin: env.CLIENT_ORIGIN,
+      origin: clientOrigins.length === 1 ? clientOrigins[0] : clientOrigins,
       credentials: true,
     }),
   )
@@ -43,7 +43,7 @@ export function createApp(): express.Express {
 <body>
 <h1>VDF Chat — сервер API</h1>
 <p>Это бэкенд (порт ${env.PORT}). Интерфейс приложения запускается отдельно.</p>
-<p><a href="${env.CLIENT_ORIGIN}">Открыть VDF Chat (клиент)</a></p>
+<p><a href="${clientOrigins[0] ?? env.CLIENT_ORIGIN}">Открыть VDF Chat (клиент)</a></p>
 <p style="color:#a0a0b0;font-size:.9rem">В разработке: <code>npm run dev</code> в папке <code>client</code> → обычно <code>http://localhost:5173</code></p>
 </body>
 </html>`)

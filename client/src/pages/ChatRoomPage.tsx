@@ -114,7 +114,7 @@ export function ChatRoomPage() {
 
   return (
     <div className="flex min-h-[calc(100dvh-6rem)] flex-col lg:min-h-[calc(100dvh-7rem)]">
-      <header className="sticky top-0 z-10 -mx-4 mb-2 flex items-center gap-3 border-b border-white/[0.08] bg-black/80 px-2 py-3 backdrop-blur-md sm:-mx-8 sm:px-3 lg:-mx-12 xl:-mx-16">
+      <header className="sticky top-0 z-10 -mx-4 mb-2 flex items-center gap-3 border-b border-white/[0.08] bg-app/90 px-2 py-3 backdrop-blur-md sm:-mx-8 sm:px-3 lg:-mx-12 xl:-mx-16">
         <Button variant="ghost" size="icon" className="shrink-0 rounded-full" asChild>
           <Link to="/chats" aria-label="Назад">
             <ArrowLeft className="h-5 w-5" />
@@ -174,7 +174,7 @@ export function ChatRoomPage() {
         <div ref={bottomRef} />
       </div>
 
-      <div className="fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom))] left-0 right-0 z-20 border-t border-white/[0.08] bg-black/85 px-4 py-3 backdrop-blur-lg sm:px-8 lg:px-12 xl:px-16">
+      <div className="fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom))] left-0 right-0 z-20 border-t border-white/[0.08] bg-app/92 px-4 py-3 backdrop-blur-lg sm:px-8 lg:px-12 xl:px-16">
         <div className="mx-auto flex max-w-app gap-2">
           <Input
             value={text}

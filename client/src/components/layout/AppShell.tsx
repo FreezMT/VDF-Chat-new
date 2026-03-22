@@ -27,8 +27,8 @@ export function AppShell() {
   }, [])
 
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-black text-white">
-      <main className="relative flex min-h-0 flex-1 flex-col pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))]">
+    <div className="flex min-h-[100dvh] flex-col bg-app text-white selection:bg-accent/30">
+      <main className="relative flex min-h-0 flex-1 flex-col pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-[max(0.5rem,env(safe-area-inset-top))]">
         <div className="mx-auto flex w-full max-w-app flex-1 flex-col px-4 sm:px-8 lg:px-12 xl:px-16">
           <Outlet />
         </div>

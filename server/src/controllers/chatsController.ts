@@ -225,10 +225,17 @@ export async function markRead(req: AuthedRequest, res: Response): Promise<void>
   })
 
   if (unread.length) {
-    await prisma.readReceipt.createMany({
-      data: unread.map((m) => ({ messageId: m.id, userId: req.userId })),
-      skipDuplicates: true,
-    })
+    await prisma.$transaction(
+      unread.map((m) =>
+        prisma.readReceipt.upsert({
+          where: {
+            messageId_userId: { messageId: m.id, userId: req.userId },
+          },
+          create: { messageId: m.id, userId: req.userId },
+          update: {},
+        }),
+      ),
+    )
   }
 
   res.json({ ok: true })

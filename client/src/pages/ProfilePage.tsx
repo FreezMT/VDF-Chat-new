@@ -24,7 +24,7 @@ const roles: Record<string, string> = {
 }
 
 export function ProfilePage() {
-  const nav = useNavigate()
+  const navigate = useNavigate()
   const { user, setUser, logout } = useAuthStore()
   const [profile, setProfile] = useState<User | null>(user)
   const [editOpen, setEditOpen] = useState(false)
@@ -43,7 +43,7 @@ export function ProfilePage() {
       /* ignore */
     }
     logout()
-    nav('/login', { replace: true })
+    navigate('/', { replace: true })
   }
 
   function copyId() {
@@ -53,100 +53,86 @@ export function ProfilePage() {
 
   if (!profile) {
     return (
-      <p className="py-20 text-center text-muted">Загрузка…</p>
+      <p className="flex flex-1 items-center justify-center py-24 text-muted">Загрузка…</p>
     )
   }
 
   const initials = `${profile.firstName[0] ?? ''}${profile.lastName[0] ?? ''}`
+  const birthStr = profile.birthDate
+    ? new Date(profile.birthDate).toLocaleDateString('ru-RU')
+    : '—'
+  const schoolName = profile.team?.name ?? 'Vinyl Dance Family'
 
   return (
-    <div className="flex min-h-[calc(100dvh-8rem)] flex-col pb-4">
-      <header className="mb-8 flex items-center justify-between sm:mb-10">
-        <h1 className="text-[22px] font-bold tracking-tight sm:text-2xl">Профиль</h1>
-      </header>
-
-      <div className="flex flex-col items-center text-center">
-        <Avatar className="h-28 w-28 border-2 border-white/10 shadow-xl sm:h-32 sm:w-32">
+    <div className="mx-auto flex w-full max-w-profile flex-1 flex-col pb-6 pt-2">
+      <div className="flex flex-col items-center px-1">
+        <Avatar className="h-28 w-28 border border-white/[0.08] shadow-lg ring-1 ring-white/5 sm:h-32 sm:w-32">
           <AvatarImage src={profile.avatarUrl ?? undefined} className="object-cover" />
-          <AvatarFallback className="bg-zinc-800 text-3xl font-semibold">{initials}</AvatarFallback>
+          <AvatarFallback className="bg-[#2c2c2e] text-3xl font-semibold text-white/90">
+            {initials}
+          </AvatarFallback>
         </Avatar>
-        <h2 className="mt-5 text-2xl font-bold tracking-tight sm:text-[26px]">
-          {profile.firstName} {profile.lastName}
-        </h2>
-        <button
-          type="button"
-          onClick={copyId}
-          className="mt-2 text-[15px] text-accent hover:underline"
-        >
-          ID {profile.visibleId} · нажмите, чтобы скопировать
-        </button>
-        <p className="mt-1 text-sm text-muted">{profile.email}</p>
-      </div>
 
-      <div className="mx-auto mt-10 w-full max-w-xl space-y-3">
-        <div className="vdf-group divide-y divide-white/[0.06]">
-          <div className="px-4 py-3.5">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted">Дата рождения</p>
-            <p className="mt-1 text-[17px]">
-              {profile.birthDate
-                ? new Date(profile.birthDate).toLocaleDateString('ru-RU')
-                : 'Не указана'}
-            </p>
-          </div>
-          <div className="px-4 py-3.5">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted">Команда</p>
-            <p className="mt-1 text-[17px]">{profile.team?.name ?? '—'}</p>
-          </div>
-          <div className="px-4 py-3.5">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted">Роль</p>
-            <p className="mt-1 text-[17px]">{roles[profile.role] ?? profile.role}</p>
-          </div>
-        </div>
-
-        <div className="vdf-group">
-          <Dialog open={editOpen} onOpenChange={setEditOpen}>
-            <DialogTrigger asChild>
-              <button
-                type="button"
-                className="vdf-group-row font-medium"
-              >
-                <span className="flex size-8 items-center justify-center rounded-lg bg-red-500/25 text-sm">
-                  ✎
-                </span>
-                Редактировать профиль
-                <ChevronRight className="ml-auto h-5 w-5 shrink-0 text-muted" />
-              </button>
-            </DialogTrigger>
-            <DialogContent>
-              <EditProfileForm
-                user={profile}
-                onSaved={(u) => {
-                  setProfile(u)
-                  setUser(u)
-                  setEditOpen(false)
-                }}
-              />
-            </DialogContent>
-          </Dialog>
-
-          {profile.role === 'admin' ? (
-            <Link
-              to="/admin"
-              className="vdf-group-row border-t border-white/[0.06] font-medium"
+        <Dialog open={editOpen} onOpenChange={setEditOpen}>
+          <DialogTrigger asChild>
+            <button
+              type="button"
+              className="mt-5 rounded-full bg-[#2c2c2e] px-5 py-2.5 text-[13px] font-semibold text-white shadow-sm transition active:scale-[0.98] active:bg-[#3a3a3c]"
             >
-              <span className="flex size-8 items-center justify-center rounded-lg bg-violet-500/30 text-sm">
-                ⚙
-              </span>
-              Админ-панель
-              <ChevronRight className="ml-auto h-5 w-5 shrink-0 text-muted" />
-            </Link>
-          ) : null}
-        </div>
+              Изменить фотографию
+            </button>
+          </DialogTrigger>
+          <DialogContent>
+            <EditProfileForm
+              user={profile}
+              onSaved={(u) => {
+                setProfile(u)
+                setUser(u)
+                setEditOpen(false)
+              }}
+            />
+          </DialogContent>
+        </Dialog>
 
-        <Button variant="destructive" className="mt-4 w-full" onClick={doLogout}>
-          Выйти
-        </Button>
+        <h1 className="mt-6 text-center text-[26px] font-bold leading-tight tracking-tight sm:text-[28px]">
+          {profile.firstName} {profile.lastName}
+        </h1>
+        <p className="mt-2 text-center text-[13px] text-muted">
+          {[profile.login ? `@${profile.login}` : null, profile.email].filter(Boolean).join(' · ') ||
+            '—'}
+        </p>
       </div>
+
+      <div className="mt-10 w-full space-y-3">
+        <button type="button" onClick={copyId} className="vdf-pill">
+          ID: {profile.visibleId}
+        </button>
+        <div className="vdf-pill cursor-default">{schoolName}</div>
+        <div className="vdf-pill cursor-default">{birthStr}</div>
+        <div className="vdf-pill cursor-default text-muted">
+          Роль: {roles[profile.role] ?? profile.role}
+        </div>
+      </div>
+
+      {profile.role === 'admin' ? (
+        <Link
+          to="/admin"
+          className="mt-4 flex w-full items-center gap-3 rounded-2xl border border-white/[0.08] bg-white/[0.04] px-4 py-3.5 font-medium transition-colors active:bg-white/[0.07]"
+        >
+          <span className="flex size-9 items-center justify-center rounded-xl bg-accent/25 text-sm">⚙</span>
+          Админ-панель
+          <ChevronRight className="ml-auto h-5 w-5 shrink-0 text-muted" />
+        </Link>
+      ) : null}
+
+      <Button
+        type="button"
+        variant="destructive"
+        className="mt-10 h-14 w-full rounded-full text-[16px] font-semibold shadow-md"
+        onClick={doLogout}
+      >
+        Выйти из аккаунта
+      </Button>
     </div>
   )
 }
@@ -178,22 +164,22 @@ function EditProfileForm({ user, onSaved }: { user: User; onSaved: (u: User) => 
       </DialogHeader>
       <div className="space-y-4">
         <div className="space-y-2">
-          <Label>Имя</Label>
-          <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} />
-        </div>
-        <div className="space-y-2">
-          <Label>Фамилия</Label>
-          <Input value={lastName} onChange={(e) => setLastName(e.target.value)} />
-        </div>
-        <div className="space-y-2">
-          <Label>URL аватара</Label>
+          <Label className="text-[13px] text-muted">Ссылка на фото (URL)</Label>
           <Input
             value={avatarUrl}
             onChange={(e) => setAvatarUrl(e.target.value)}
             placeholder="https://…"
           />
         </div>
-        <Button className="w-full" onClick={save} disabled={loading}>
+        <div className="space-y-2">
+          <Label className="text-[13px] text-muted">Имя</Label>
+          <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+        </div>
+        <div className="space-y-2">
+          <Label className="text-[13px] text-muted">Фамилия</Label>
+          <Input value={lastName} onChange={(e) => setLastName(e.target.value)} />
+        </div>
+        <Button className="mt-2 w-full" size="lg" onClick={save} disabled={loading}>
           Сохранить
         </Button>
       </div>

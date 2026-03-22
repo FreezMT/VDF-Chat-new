@@ -27,3 +27,8 @@ const schema = z.object({
 })
 
 export const env = schema.parse(process.env)
+
+/** Несколько origin через запятую — удобно для теста с телефона в той же Wi‑Fi сети */
+export const clientOrigins = env.CLIENT_ORIGIN.split(',')
+  .map((s) => s.trim())
+  .filter(Boolean)

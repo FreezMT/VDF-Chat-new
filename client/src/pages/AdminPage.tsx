@@ -17,7 +17,8 @@ type Row = {
   visibleId: string
   firstName: string
   lastName: string
-  email: string
+  login: string | null
+  email: string | null
   role: Role
   teamId: string | null
   team: { id: string; name: string } | null
@@ -60,7 +61,7 @@ export function AdminPage() {
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
           <div className="min-w-0 flex-1 space-y-2">
             <Label className="text-[13px] text-muted">Поиск</Label>
-            <Input placeholder="Имя, email, ID…" value={q} onChange={(e) => setQ(e.target.value)} />
+            <Input placeholder="Имя, логин, email, ID…" value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
           <div className="space-y-2 lg:w-48">
             <Label className="text-[13px] text-muted">Роль</Label>
@@ -90,7 +91,9 @@ export function AdminPage() {
               {u.firstName} {u.lastName}{' '}
               <span className="font-normal text-muted">({u.visibleId})</span>
             </p>
-            <p className="mt-1 text-sm text-muted">{u.email}</p>
+            <p className="mt-1 text-sm text-muted">
+              {[u.login ? `@${u.login}` : null, u.email].filter(Boolean).join(' · ') || '—'}
+            </p>
             <p className="mt-1 text-sm text-muted">
               Роль: {u.role} · Команда: {u.team?.name ?? '—'}
             </p>

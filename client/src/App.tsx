@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/authStore'
 import type { User } from '@/types'
 import { useSocketConnection } from '@/hooks/useSocket'
 import { AppShell } from '@/components/layout/AppShell'
+import { WelcomePage } from '@/pages/WelcomePage'
 import { LoginPage } from '@/pages/LoginPage'
 import { RegisterPage } from '@/pages/RegisterPage'
 import { FeedPage } from '@/pages/FeedPage'
@@ -47,13 +48,13 @@ function Bootstrap({ children }: { children: ReactNode }) {
 function Guarded() {
   useSocketConnection()
   const user = useAuthStore((s) => s.user)
-  if (!user) return <Navigate to="/login" replace />
+  if (!user) return <Navigate to="/" replace />
   return <AppShell />
 }
 
 function AdminGate() {
   const user = useAuthStore((s) => s.user)
-  if (!user) return <Navigate to="/login" replace />
+  if (!user) return <Navigate to="/" replace />
   if (user.role !== 'admin') return <Navigate to="/feed" replace />
   return <AdminPage />
 }
@@ -66,7 +67,7 @@ export default function App() {
     <BrowserRouter>
       <Bootstrap>
         {!bootstrapped ? (
-          <div className="flex h-[100dvh] items-center justify-center bg-black text-[15px] text-muted">
+          <div className="flex h-[100dvh] items-center justify-center bg-app text-[15px] text-muted">
             Загрузка…
           </div>
         ) : (
@@ -79,6 +80,10 @@ export default function App() {
               path="/register"
               element={user ? <Navigate to="/feed" replace /> : <RegisterPage />}
             />
+            <Route
+              path="/"
+              element={user ? <Navigate to="/feed" replace /> : <WelcomePage />}
+            />
             <Route element={<Guarded />}>
               <Route path="/feed" element={<FeedPage />} />
               <Route path="/plus" element={<PlusPage />} />
@@ -87,8 +92,7 @@ export default function App() {
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/admin" element={<AdminGate />} />
             </Route>
-            <Route path="/" element={<Navigate to="/feed" replace />} />
-            <Route path="*" element={<Navigate to="/feed" replace />} />
+            <Route path="*" element={<Navigate to={user ? '/feed' : '/'} replace />} />
           </Routes>
         )}
       </Bootstrap>

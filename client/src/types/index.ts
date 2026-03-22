@@ -5,7 +5,8 @@ export type User = {
   visibleId: string
   firstName: string
   lastName: string
-  email: string
+  login: string | null
+  email: string | null
   role: Role
   birthDate: string | null
   avatarUrl: string | null
